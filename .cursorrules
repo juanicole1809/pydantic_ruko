@@ -1,0 +1,7 @@
+Siempre que ejecutes un archivo Python en este proyecto, asegurate de activar primero el entorno virtual que está en ./venv. Usá:
+
+source ./venv/bin/activate
+
+Luego, ejecutá el comando correspondiente (por ejemplo: python ejecutar_agente.py).
+
+Nunca ejecutes código Python globalmente fuera del entorno virtual.
