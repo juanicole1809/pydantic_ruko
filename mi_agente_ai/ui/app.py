@@ -3,6 +3,10 @@ import sys
 import os
 import traceback
 import json
+import pandas as pd
+import threading
+import time
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 
 # Agregar el directorio raíz del proyecto al path para importaciones
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
@@ -51,8 +55,8 @@ def get_agent():
         st.code(traceback.format_exc())
         return None
 
-# Función para generar respuesta
-def generate_response(prompt):
+# Función para generar respuesta con timeout
+def generate_response(prompt, timeout_seconds=65):  # 65 segundos (ligeramente mayor que el timeout del agente)
     agent = get_agent()
     if agent is None:
         # Crear un objeto con la misma estructura que devuelve el agente
@@ -64,11 +68,37 @@ def generate_response(prompt):
         # Convertir a un objeto similar al que devuelve el agente
         return type('AgentResponse', (), error_obj)
     
-    return agent.run(prompt)
+    # Utilizando ThreadPoolExecutor para implementar el timeout
+    with ThreadPoolExecutor() as executor:
+        future = executor.submit(agent.run, prompt)
+        try:
+            return future.result(timeout=timeout_seconds)
+        except FutureTimeoutError:
+            # Crear un objeto de respuesta para el timeout
+            timeout_obj = {
+                "response": "Lo siento, la consulta ha tomado demasiado tiempo en procesarse. Por favor, intenta con una pregunta más específica sobre licencias de encargados o consorcios administrados.", 
+                "tool_used": False, 
+                "tool_result": None
+            }
+            return type('AgentResponse', (), timeout_obj)
 
 # Título
 st.title("🤖 Mi Agente AI")
-st.markdown("Conversa con un agente de IA que usa Pydantic AI + Groq")
+st.markdown("Conversa con Carlos Zapier, agente especializado en licencias de encargados")
+
+# Información sobre capacidades del agente
+with st.expander("ℹ️ ¿Qué puedo consultar?"):
+    st.markdown("""
+    **Carlos Zapier** es un asistente especializado en responder consultas sobre:
+    
+    - Licencias y permisos de encargados de consorcios
+    - Información sobre fechas de inicio, finalización y reincorporación
+    - Consultas específicas sobre empleados y sus licencias
+    
+    **No puede responder** consultas sobre otros temas no relacionados con su área de especialidad.
+    
+    Para obtener los mejores resultados, haz preguntas específicas sobre licencias de encargados.
+    """)
 
 # Inicializar historial de chat si no existe
 if "messages" not in st.session_state:
@@ -80,7 +110,7 @@ for message in st.session_state.messages:
         st.markdown(message["content"])
 
 # Área de entrada para el usuario
-if prompt := st.chat_input("Escribe tu mensaje aquí..."):
+if prompt := st.chat_input("Pregúntame sobre licencias de encargados..."):
     # Agregar mensaje del usuario al historial
     st.session_state.messages.append({"role": "user", "content": prompt})
     
@@ -94,30 +124,102 @@ if prompt := st.chat_input("Escribe tu mensaje aquí..."):
         
         with st.spinner("Pensando..."):
             try:
+                # Obtener respuesta (ya tiene manejo de timeout incorporado)
                 result = generate_response(prompt)
                 response = result.response
                 
+                # Procesar el resultado de la herramienta
                 if result.tool_used and result.tool_result:
-                    # Crear un contenedor para mostrar el resultado de la herramienta
-                    tool_container = st.container()
-                    with tool_container:
-                        st.markdown("### 🔍 Resultado de búsqueda")
+                    try:
+                        tool_result = json.loads(result.tool_result)
                         
-                        # Intentar parsear el resultado como JSON
-                        try:
-                            tool_data = json.loads(result.tool_result)
+                        # Si es un resultado de la herramienta de consulta de licencias
+                        if "registros" in tool_result:
+                            st.subheader(f"Registros encontrados: {len(tool_result['registros'])}")
                             
-                            # Mostrar el resultado principal
-                            if "result" in tool_data:
-                                st.info(tool_data["result"])
+                            tab1, tab2 = st.tabs(["Vista tabla", "Vista detallada"])
                             
-                            # Mostrar la fecha de consulta si existe
-                            if "fecha_consulta" in tool_data:
-                                st.caption(f"📅 Fecha de consulta: {tool_data['fecha_consulta']}")
-                        except Exception as json_error:
-                            # Si no se puede parsear como JSON, mostrar como texto plano
-                            st.info(result.tool_result)
-                            st.caption("No se pudo extraer información adicional")
+                            with tab1:
+                                if tool_result["registros"]:
+                                    # Preparar datos para la tabla
+                                    # Extrae campos relevantes (excluyendo campos de sistema)
+                                    campos_a_ignorar = ["Fecha de creación", "Última actualización"]
+                                    all_fields = set()
+                                    for reg in tool_result["registros"]:
+                                        # Solo considerar campos que no son de sistema
+                                        relevant_fields = {k for k in reg.keys() if k not in campos_a_ignorar}
+                                        all_fields.update(relevant_fields)
+                                    
+                                    # Orden preferido de campos
+                                    orden_preferido = ["Empleado", "Fecha de inicio", "Fecha Finalización", "Reincorporación"]
+                                    # Ordenar campos: primero los de orden_preferido, luego el resto alfabéticamente
+                                    campos_ordenados = [campo for campo in orden_preferido if campo in all_fields]
+                                    campos_restantes = sorted([campo for campo in all_fields if campo not in orden_preferido])
+                                    campos_ordenados.extend(campos_restantes)
+                                    
+                                    # Crear una lista de diccionarios para el DataFrame
+                                    table_data = []
+                                    for reg in tool_result["registros"]:
+                                        # Omitir campos de sistema en la vista de tabla
+                                        row = {field: reg.get(field, "") for field in campos_ordenados}
+                                        table_data.append(row)
+                                    
+                                    # Mostrar como DataFrame de pandas
+                                    if table_data:
+                                        st.dataframe(pd.DataFrame(table_data))
+                                else:
+                                    st.info("No se encontraron registros.")
+                            
+                            with tab2:
+                                for i, reg in enumerate(tool_result["registros"]):
+                                    # Determinar título significativo para el expander
+                                    titulo = f"Registro {i+1}"
+                                    if "Empleado" in reg:
+                                        titulo = f"{reg['Empleado']}"
+                                    
+                                    with st.expander(titulo):
+                                        # Mostrar campos en orden específico (sin campos de sistema)
+                                        # Primero mostrar Empleado si existe
+                                        if "Empleado" in reg:
+                                            st.write("**Empleado:**", reg["Empleado"])
+                                        
+                                        # Luego mostrar las fechas importantes
+                                        fechas = ["Fecha de inicio", "Fecha Finalización", "Reincorporación"]
+                                        for campo in fechas:
+                                            if campo in reg:
+                                                st.write(f"**{campo}:**", reg[campo])
+                                        
+                                        # Finalmente mostrar otros campos (que no sean de sistema)
+                                        campos_a_ignorar = ["Fecha de creación", "Última actualización", "Empleado"] + fechas
+                                        for key, value in reg.items():
+                                            if key not in campos_a_ignorar:
+                                                st.write(f"**{key}:**", value)
+                            
+                            # Mostrar metadata
+                            with st.expander("Metadata de la consulta"):
+                                st.write("**Entidad:** ", tool_result.get("metadata", {}).get("entity_id", "No disponible"))
+                                st.write("**Reporte:** ", tool_result.get("metadata", {}).get("reports_id", "No disponible"))
+                                st.write("**Éxito:** ", "Sí" if tool_result.get("metadata", {}).get("success", False) else "No")
+                                st.write("**Registros solicitados:** ", tool_result.get("metadata", {}).get("limit", "No disponible"))
+                                st.write("**Tiempo de respuesta:** ", f"{tool_result.get('metadata', {}).get('response_time_ms', 0)} ms")
+                                st.write("**Fecha de consulta:** ", tool_result.get("metadata", {}).get("timestamp", "No disponible"))
+                        
+                        # Si es un error de la herramienta de consulta de licencias
+                        elif "error" in tool_result:
+                            st.error(f"Error en la consulta: {tool_result['error']}")
+                            
+                            # Mostrar metadata si está disponible
+                            if "metadata" in tool_result:
+                                with st.expander("Metadata de la consulta"):
+                                    for key, value in tool_result["metadata"].items():
+                                        st.write(f"**{key}:** {value}")
+                        
+                        # Otros tipos de resultados
+                        else:
+                            st.json(tool_result)
+                    except Exception as e:
+                        st.error(f"Error al procesar el resultado de la herramienta: {str(e)}")
+                        st.code(result.tool_result)
                 
                 message_placeholder.markdown(response)
                 
@@ -141,7 +243,23 @@ if st.sidebar.button("Borrar conversación"):
 
 # Información en el sidebar
 st.sidebar.markdown("## Acerca del Agente")
-st.sidebar.markdown("Este agente está basado en el modelo Llama 3 de Groq.")
-st.sidebar.markdown("Utiliza Pydantic AI como framework para estructurar la información.")
+st.sidebar.markdown("**Carlos Zapier** es un asistente virtual de Administración Anastópulos.")
+st.sidebar.markdown("Especializado en consultas sobre licencias de encargados de consorcios.")
+st.sidebar.markdown("Utiliza Llama 3.3 70B Versatile vía Groq y Pydantic AI.")
 st.sidebar.markdown("---")
-st.sidebar.markdown("Desarrollado con ❤️ usando Streamlit") 
+st.sidebar.markdown("Desarrollado con ❤️ para Administración Anastópulos")
+
+# Añadir también ejemplos de consultas útiles
+st.sidebar.markdown("## Ejemplos de consultas")
+ejemplos = [
+    "¿Qué licencias tuvo Daniel Viola?",
+    "Muéstrame las licencias que terminan en enero 2023",
+    "¿Cuándo se reincorporó Celestino Ayvar?",
+    "¿Quién estuvo de licencia en octubre 2022?"
+]
+
+for ejemplo in ejemplos:
+    if st.sidebar.button(ejemplo):
+        # Simular que el usuario escribió el ejemplo
+        st.session_state.messages.append({"role": "user", "content": ejemplo})
+        st.rerun()

@@ -1,4 +1,6 @@
 # Archivo de inicialización para el paquete tools
-from .simple_tool import simple_tool, SimpleToolInput, SimpleToolOutput
+from .consulta_licencias_encargados import consulta_licencias_encargados, ConsultaLicenciasEncargadosInput, ConsultaLicenciasEncargadosOutput
 
-__all__ = ["simple_tool", "SimpleToolInput", "SimpleToolOutput"] 
+__all__ = [
+    "consulta_licencias_encargados", "ConsultaLicenciasEncargadosInput", "ConsultaLicenciasEncargadosOutput"
+] 

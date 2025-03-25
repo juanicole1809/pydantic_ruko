@@ -1,15 +1,16 @@
 # Mi Agente AI
 
-Asistente virtual basado en Llama 3 utilizando Pydantic AI y Groq.
+Asistente virtual basado en Llama 3.3 para Administración Anastópulos que responde consultas sobre consorcios administrados.
 
 ## Descripción
 
-Mi Agente AI es un asistente virtual que utiliza el modelo Llama 3.3 de Groq para ofrecer respuestas inteligentes. La aplicación integra herramientas personalizadas que permiten al agente realizar búsquedas y proporcionar información sobre diversos temas.
+Mi Agente AI es un asistente virtual que utiliza el modelo Llama 3.3 70B Versatile de Groq para ofrecer respuestas inteligentes sobre consorcios administrados. El agente, que se presenta como Carlos Zapier, está especializado en proporcionar información precisa sobre licencias y permisos de encargados.
 
 ## Requisitos
 
 - Python 3.10 o superior
 - Una cuenta en [Groq](https://console.groq.com/) para obtener una API key
+- Credenciales de Rukovoditel para acceder a datos de licencias
 
 ## Instalación
 
@@ -46,10 +47,13 @@ Copia el archivo de ejemplo `.env.example` a `.env`:
 cp .env.example .env
 ```
 
-Edita el archivo `.env` y añade tu API key de Groq:
+Edita el archivo `.env` y añade tus credenciales:
 
 ```
 GROQ_API_KEY=tu_api_key_de_groq
+RUKOVODITEL_API_KEY=tu_api_key_de_rukovoditel_aqui
+RUKOVODITEL_USER=tu_usuario_de_rukovoditel
+RUKOVODITEL_PASSWORD=tu_contraseña_de_rukovoditel
 ```
 
 ## Ejecución
@@ -90,7 +94,7 @@ mi_agente_ai/
     │   ├── base_agent.py  # Agente básico con Pydantic AI
     │   └── __init__.py
     ├── tools/             # Herramientas utilizadas por los agentes
-    │   ├── simple_tool.py # Herramienta de búsqueda simple
+    │   ├── consulta_licencias_encargados.py # Herramienta para consultar licencias
     │   └── __init__.py
     ├── ui/                # Interfaz de usuario
     │   ├── app.py         # Aplicación Streamlit
@@ -107,23 +111,27 @@ mi_agente_ai/
 
 ## Componentes Principales
 
-### Agente
+### Agente Carlos Zapier
 
-El componente central es el `Agent` definido en `mi_agente_ai/agents/base_agent.py`. Este agente utiliza Pydantic AI con el modelo Llama 3.3 de Groq para procesar consultas y generar respuestas. Características principales:
+El componente central es el `Agent` definido en `mi_agente_ai/agents/base_agent.py`. Este agente utiliza Pydantic AI con el modelo Llama 3.3 70B Versatile de Groq para procesar consultas y generar respuestas. Características principales:
 
-- Inicialización del modelo Llama 3.3 a través de Groq
-- Configuración de temperatura para controlar la creatividad de las respuestas
-- Integración con herramientas para expandir sus capacidades
+- Personificación como Carlos Zapier, empleado de Administración Anastópulos
+- Inicialización del modelo Llama 3.3 70B Versatile a través de Groq
+- Configuración de temperatura (1.0) para respuestas naturales
+- Integración con la herramienta de consulta de licencias y encargados
 - Manejo de errores y formateo consistente de respuestas
 
 ### Herramientas
 
-En `mi_agente_ai/tools/simple_tool.py` se encuentra una herramienta que permite al agente realizar búsquedas simuladas sobre temas específicos. Características:
+El agente cuenta con la siguiente herramienta:
 
-- Modelo de entrada y salida definido con Pydantic
-- Base de datos local con información sobre temas comunes (Python, IA, etc.)
-- Respuestas por defecto cuando no hay información disponible
-- Inclusión de metadatos como la fecha de consulta
+**Consulta de Licencias y Encargados**: En `mi_agente_ai/tools/consulta_licencias_encargados.py`. Permite al agente consultar información específica sobre licencias y permisos de encargados. Características:
+   - Conexión segura a la API de Rukovoditel mediante credenciales
+   - Consulta de registros de la entidad 43 (Pasantías)
+   - Visualización detallada de resultados en formato tabular
+   - Transformación de IDs de campos a nombres descriptivos
+   - Soporte para filtros personalizados
+   - Metadatos detallados sobre la consulta
 
 ### Interfaz de Usuario
 
@@ -133,26 +141,19 @@ Hay dos interfaces disponibles:
 
 2. **Interfaz Web**: Implementada en `mi_agente_ai/ui/app.py` utilizando Streamlit, ofrece:
    - Interfaz de chat con historial de mensajes
-   - Visualización de resultados de herramientas
+   - Visualización estructurada de resultados de la herramienta de consulta
+   - Vista tabular y detallada de registros obtenidos
    - Manejo de errores con retroalimentación visual
    - Carga de variables de entorno con opciones alternativas
-
-## Contribuir
-
-1. Haz un fork del proyecto
-2. Crea una rama para tu funcionalidad (`git checkout -b feature/nueva-funcionalidad`)
-3. Haz commit de tus cambios (`git commit -am 'Añadir nueva funcionalidad'`)
-4. Haz push a la rama (`git push origin feature/nueva-funcionalidad`)
-5. Crea un Pull Request
 
 ## Desarrollo Futuro
 
 Áreas para expansión:
 
-1. Añadir más herramientas para ampliar las capacidades del agente
-2. Implementar integración con APIs externas para datos en tiempo real
+1. Mejorar las capacidades de consulta de la herramienta actual
+2. Implementar herramientas adicionales para la gestión de consorcios
 3. Mejorar la persistencia del historial de conversaciones
-4. Añadir soporte para entradas y salidas multimodales
+4. Añadir soporte para consultas más específicas sobre administración de edificios
 
 ## Licencia
 
